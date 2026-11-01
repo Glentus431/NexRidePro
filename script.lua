@@ -1,140 +1,184 @@
--- NexMarketPRO Mobile Reselling Finder
--- Reads visible NexRide marketplace GUI; does not automate phone navigation.
+-- NexMarketPRO | iPhone / Delta-compatible best-effort GUI reader
+-- No purchases, no fabricated market results. Only visible loaded GUI data.
 local Players = game:GetService('Players')
+local UIS = game:GetService('UserInputService')
 local player = Players.LocalPlayer
 local pg = player:WaitForChild('PlayerGui')
-local old = pg:FindFirstChild('NexMarketPRO_Reselling')
-if old then old:Destroy() end
-local gui = Instance.new('ScreenGui')
-gui.Name = 'NexMarketPRO_Reselling'
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = false
-gui.DisplayOrder = 10000
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = pg
-local function make(class,parent,props)
-    local obj = Instance.new(class)
-    for k,v in pairs(props or {}) do obj[k]=v end
-    obj.Parent = parent
-    return obj
+
+local parent = pg
+pcall(function()
+    if type(gethui) == 'function' then
+        local h = gethui()
+        if typeof(h) == 'Instance' then parent = h end
+    end
+end)
+for _,p in ipairs({pg,parent}) do
+    local old=p:FindFirstChild('NexMarketPRO_Final')
+    if old then old:Destroy() end
 end
-local function round(obj,r) make('UICorner',obj,{CornerRadius=UDim.new(0,r)}) end
-local gold = Color3.fromRGB(246,188,70)
-local bg = Color3.fromRGB(17,20,28)
-local tile = Color3.fromRGB(32,37,49)
-local white = Color3.fromRGB(242,244,248)
-local function label(parent,text,pos,size,fontSize)
-    return make('TextLabel',parent,{Text=text,Position=pos,Size=size,TextColor3=white,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=fontSize or 13,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left})
+local function mk(typ,p,props)
+    local o=Instance.new(typ)
+    for k,v in pairs(props or {}) do o[k]=v end
+    o.Parent=p
+    return o
 end
-local function button(parent,text,pos,size,color)
-    local b=make('TextButton',parent,{Text=text,Position=pos,Size=size,BackgroundColor3=color or tile,TextColor3=white,Font=Enum.Font.GothamBold,TextSize=14,AutoButtonColor=true,Active=true})
-    round(b,10)
+local C={bg=Color3.fromRGB(15,19,28),panel=Color3.fromRGB(29,35,47),gold=Color3.fromRGB(248,190,71),text=Color3.fromRGB(246,247,250),muted=Color3.fromRGB(173,182,195)}
+local gui=mk('ScreenGui',parent,{Name='NexMarketPRO_Final',ResetOnSpawn=false,IgnoreGuiInset=false,DisplayOrder=100000,ZIndexBehavior=Enum.ZIndexBehavior.Global})
+local function corner(o,r) mk('UICorner',o,{CornerRadius=UDim.new(0,r)}) end
+local function label(p,t,x,y,w,h,sz,z)
+    return mk('TextLabel',p,{Text=t,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),BackgroundTransparency=1,TextColor3=C.text,TextSize=sz or 13,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,ZIndex=z or 22})
+end
+local function button(p,t,x,y,w,h,color,z)
+    local b=mk('TextButton',p,{Text=t,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),BackgroundColor3=color or C.panel,TextColor3=C.text,Font=Enum.Font.GothamBold,TextSize=14,AutoButtonColor=true,Active=true,ZIndex=z or 23})
+    corner(b,10)
     return b
 end
-local launcher=button(gui,'N',UDim2.new(0,12,.45,0),UDim2.fromOffset(55,55),gold)
-launcher.TextColor3=bg
-launcher.TextSize=25
-launcher.ZIndex=20
-local main=make('Frame',gui,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(370,520),BackgroundColor3=bg,Visible=false,Active=true,ZIndex=10})
-round(main,15)
-local scale=make('UIScale',main,{Scale=1})
+local launch=button(gui,'N',14,185,60,60,C.gold,50)
+launch.TextSize=27
+launch.TextColor3=C.bg
+local window=mk('Frame',gui,{Name='Window',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(370,520),BackgroundColor3=C.bg,BorderSizePixel=0,Visible=false,Active=true,ZIndex=20})
+corner(window,16)
+local uiScale=mk('UIScale',window,{Scale=1})
 local function fit()
     local cam=workspace.CurrentCamera
-    if cam then
-        local v=cam.ViewportSize
-        scale.Scale=math.min(1,(v.X-16)/370,(v.Y-30)/520)
-    end
+    if not cam then return end
+    local v=cam.ViewportSize
+    uiScale.Scale=math.max(.5,math.min(1,(v.X-16)/370,(v.Y-30)/520))
 end
 fit()
-workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(fit)
-if workspace.CurrentCamera then workspace.CurrentCamera:GetPropertyChangedSignal('ViewportSize'):Connect(fit) end
-label(main,'NEXMARKET PRO',UDim2.fromOffset(16,12),UDim2.fromOffset(275,32),21).Font=Enum.Font.GothamBold
-local close=button(main,'X',UDim2.new(1,-47,0,10),UDim2.fromOffset(34,34))
-label(main,'Find low-priced bikes | estimate gross spread',UDim2.fromOffset(16,45),UDim2.fromOffset(338,25),12).TextColor=gold
-local status=label(main,'Open NEXMARKET Browse, search a bike, choose Lowest Price, then scan.',UDim2.fromOffset(16,76),UDim2.fromOffset(338,42),12)
+local viewportConn
+local function watchCam()
+    if viewportConn then viewportConn:Disconnect() end
+    local cam=workspace.CurrentCamera
+    if cam then viewportConn=cam:GetPropertyChangedSignal('ViewportSize'):Connect(fit) end
+    fit()
+end
+workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(watchCam)
+watchCam()
+local heading=label(window,'NEXMARKET PRO',16,12,275,32,21)
+heading.Font=Enum.Font.GothamBold
+local close=button(window,'CLOSE',290,12,65,34,C.panel)
+local sub=label(window,'Mobile resale finder • observed listings only',16,48,338,24,12)
+sub.TextColor3=C.gold
+local status=label(window,'Select a bike. Open the game market and sort Lowest Price.',16,76,338,43,12)
+local bikeList=mk('ScrollingFrame',window,{Position=UDim2.fromOffset(16,125),Size=UDim2.fromOffset(338,142),BackgroundColor3=C.panel,BorderSizePixel=0,ScrollBarThickness=4,CanvasSize=UDim2.fromOffset(0,324),ZIndex=21})
+corner(bikeList,9)
 local bikes={'ZOOTIO','NXR K10','ZORAN LIGHT X','ZORAN ULTRA HP X','RAZE 250F','RYVEN 250','ZORAN MX','STARKEN'}
-local selected={}
-local bikeFrame=make('ScrollingFrame',main,{Position=UDim2.fromOffset(16,122),Size=UDim2.fromOffset(338,133),BackgroundColor3=tile,BorderSizePixel=0,ScrollBarThickness=4,CanvasSize=UDim2.fromOffset(0,#bikes*39+8)})
-round(bikeFrame,9)
+local chosen={}
 for i,name in ipairs(bikes) do
-    local b=button(bikeFrame,'+  '..name,UDim2.fromOffset(5,(i-1)*39+5),UDim2.fromOffset(320,35),bg)
-    b.MouseButton1Click:Connect(function()
-        selected[name]=not selected[name]
-        b.Text=(selected[name] and '✓  ' or '+  ')..name
-        b.BackgroundColor3=selected[name] and Color3.fromRGB(77,65,37) or bg
+    local b=button(bikeList,'+  '..name,6,5+(i-1)*39,315,35,C.bg,24)
+    b.Activated:Connect(function()
+        chosen[name]=not chosen[name]
+        b.Text=(chosen[name] and '✓  ' or '+  ')..name
+        b.BackgroundColor3=chosen[name] and Color3.fromRGB(80,65,36) or C.bg
     end)
 end
-local scan=button(main,'SCAN VISIBLE MARKET',UDim2.fromOffset(16,266),UDim2.fromOffset(338,44),gold)
-scan.TextColor3=bg
-label(main,'Search the selected bike in the game phone and choose Lowest Price first.',UDim2.fromOffset(16,316),UDim2.fromOffset(338,38),11)
-local output=make('ScrollingFrame',main,{Position=UDim2.fromOffset(16,357),Size=UDim2.fromOffset(338,147),BackgroundColor3=tile,BorderSizePixel=0,ScrollBarThickness=4,CanvasSize=UDim2.fromOffset(0,0)})
-round(output,9)
-local outText=label(output,'No scan yet.',UDim2.fromOffset(10,8),UDim2.fromOffset(315,120),12)
-outText.TextYAlignment=Enum.TextYAlignment.Top
+local scan=button(window,'SCAN MARKET',16,278,338,46,C.gold)
+scan.TextColor3=C.bg
+local note=label(window,'Search for your chosen bike in NEXMARKET, set Lowest Price, then scan. Scroll listings and scan again.',16,328,338,43,11)
+note.TextColor3=C.muted
+local results=mk('ScrollingFrame',window,{Position=UDim2.fromOffset(16,377),Size=UDim2.fromOffset(338,128),BackgroundColor3=C.panel,BorderSizePixel=0,ScrollBarThickness=4,CanvasSize=UDim2.fromOffset(0,160),ZIndex=21})
+corner(results,9)
+local resultText=label(results,'No listings scanned yet.',10,8,310,150,12,23)
+resultText.TextYAlignment=Enum.TextYAlignment.Top
 local function show(lines)
-    outText.Text=table.concat(lines,'\n')
-    local count=0
-    for _ in outText.Text:gmatch('\n') do count=count+1 end
-    local h=math.max(130,(count+2)*19)
-    outText.Size=UDim2.fromOffset(315,h)
-    output.CanvasSize=UDim2.fromOffset(0,h+14)
+    resultText.Text=table.concat(lines,'\n')
+    local n=1
+    for _ in resultText.Text:gmatch('\n') do n=n+1 end
+    local h=math.max(135,n*19+20)
+    resultText.Size=UDim2.fromOffset(310,h)
+    results.CanvasSize=UDim2.fromOffset(0,h+16)
 end
--- No launcher dragging: a normal tap is reliable on iPhone.
-launcher.MouseButton1Click:Connect(function()
-    main.Visible=not main.Visible
-    print('[NexMarketPRO] Menu visible:',main.Visible)
+local function setOpen(v)
+    window.Visible=v
+    launch.Visible=not v
+end
+-- Use Activated for touch and mouse. Launcher is hidden while panel is open,
+-- avoiding overlapping Z-index/input conflicts on iPhone.
+launch.Activated:Connect(function() setOpen(true) end)
+close.Activated:Connect(function() setOpen(false) end)
+-- Backup touch handling for executor environments that fail to fire Activated.
+local startPos, startTime
+launch.InputBegan:Connect(function(input)
+    if input.UserInputType==Enum.UserInputType.Touch then
+        startPos=input.Position
+        startTime=os.clock()
+    end
 end)
-close.MouseButton1Click:Connect(function() main.Visible=false end)
+launch.InputEnded:Connect(function(input)
+    if input.UserInputType==Enum.UserInputType.Touch and startPos then
+        local d=(input.Position-startPos).Magnitude
+        if d<24 and os.clock()-startTime<1 then setOpen(true) end
+        startPos=nil
+    end
+end)
 local function visible(o)
     local p=o
-    while p and p~=pg do
-        if p:IsA('GuiObject') and (not p.Visible or p.AbsoluteSize.X<1 or p.AbsoluteSize.Y<1) then return false end
+    while p and p~=pg and p~=parent do
+        if p:IsA('GuiObject') and (not p.Visible or p.AbsoluteSize.X<=0 or p.AbsoluteSize.Y<=0) then return false end
         p=p.Parent
     end
     return true
 end
-local function priceOf(s)
-    if type(s)~='string' then return nil end
-    local t=s:match('%$%s*([%d,]+)')
-    if not t then return nil end
-    local n=tonumber((t:gsub(',','')))
+local function money(n)
+    local s=tostring(math.floor(n+0.5))
+    return '$'..s:reverse():gsub('(%d%d%d)','%1,'):reverse():gsub('^,','')
+end
+local function priceOf(t)
+    if type(t)~='string' then return nil end
+    local raw=t:match('%$%s*([%d,]+)')
+    if not raw then return nil end
+    local n=tonumber((raw:gsub(',','')))
     if n and n>=100 and n<=10000000 then return n end
 end
-local function readTexts(root)
+local function norm(t)
+    return tostring(t or ''):upper():gsub('%s+',' ')
+end
+local function getVisibleTexts()
     local arr={}
-    for _,o in ipairs(root:GetDescendants()) do
-        if (o:IsA('TextLabel') or o:IsA('TextButton') or o:IsA('TextBox')) and visible(o) then
-            local s=o.Text
-            if s and #s>0 and #s<300 then arr[#arr+1]={o=o,text=s,upper=s:upper()} end
+    for _,o in ipairs(pg:GetDescendants()) do
+        if (o:IsA('TextLabel') or o:IsA('TextButton') or o:IsA('TextBox')) and not o:IsDescendantOf(gui) and visible(o) then
+            local t=o.Text
+            if t and #t>0 and #t<250 then
+                arr[#arr+1]={object=o,text=t,upper=norm(t)}
+            end
         end
     end
     return arr
 end
+local function isModel(t,model)
+    return t:find(model,1,true)~=nil
+end
 local function collect()
-    local all=readTexts(pg)
-    local entries,seen={},{}
-    for _,item in ipairs(all) do
-        if not item.o:IsDescendantOf(gui) then
-            local model=nil
-            for _,b in ipairs(bikes) do if item.upper:find(b,1,true) then model=b;break end end
-            if model then
-                local ancestor=item.o.Parent
+    local texts=getVisibleTexts()
+    local found={}
+    -- Associate prices only when one model and one price appear in a small card.
+    -- Deduplicate by the card instance, not by price (different sellers can match).
+    local visited={}
+    for _,x in ipairs(texts) do
+        for _,model in ipairs(bikes) do
+            if chosen[model] and isModel(x.upper,model) then
+                local ancestor=x.object.Parent
                 for depth=1,3 do
                     if not ancestor or ancestor==pg then break end
-                    local matches={}
-                    for _,x in ipairs(readTexts(ancestor)) do
-                        if not x.o:IsDescendantOf(gui) then
-                            local n=priceOf(x.text)
-                            if n then matches[n]=true end
+                    local modelsHere,pricesHere={},{}
+                    for _,y in ipairs(texts) do
+                        if y.object:IsDescendantOf(ancestor) then
+                            for _,b in ipairs(bikes) do
+                                if isModel(y.upper,b) then modelsHere[b]=true end
+                            end
+                            local p=priceOf(y.text)
+                            if p then pricesHere[p]=true end
                         end
                     end
-                    local prices={}
-                    for p in pairs(matches) do prices[#prices+1]=p end
-                    if #prices==1 then
-                        local key=model..':'..prices[1]..':'..tostring(ancestor)
-                        if not seen[key] then
-                            seen[key]=true
-                            entries[#entries+1]={model=model,price=prices[1]}
+                    local nModels,nPrices,picked=0,0,nil
+                    for _ in pairs(modelsHere) do nModels=nModels+1 end
+                    for p in pairs(pricesHere) do nPrices=nPrices+1;picked=p end
+                    if nModels==1 and modelsHere[model] and nPrices==1 then
+                        local key=tostring(ancestor)
+                        if not visited[key] then
+                            visited[key]=true
+                            found[#found+1]={model=model,price=picked}
                         end
                         break
                     end
@@ -143,61 +187,56 @@ local function collect()
             end
         end
     end
-    return entries
-end
-local function money(n)
-    local s=tostring(math.floor(n+0.5))
-    return '$'..s:reverse():gsub('(%d%d%d)','%1,'):reverse():gsub('^,','')
+    return found
 end
 local busy=false
-scan.MouseButton1Click:Connect(function()
+scan.Activated:Connect(function()
     if busy then return end
+    local count=0
+    for _,b in ipairs(bikes) do if chosen[b] then count=count+1 end end
+    if count==0 then
+        status.Text='Select at least one bike first.'
+        return
+    end
     busy=true
     scan.Text='SCANNING...'
-    status.Text='Reading visible marketplace UI...'
-    task.wait(.25)
-    local grouped={}
-    for _,b in ipairs(bikes) do if selected[b] then grouped[b]={} end end
-    if next(grouped)==nil then
-        status.Text='Select at least one bike.'
-        show({'Choose a bike above, then try again.'})
-        busy=false;scan.Text='SCAN VISIBLE MARKET';return
-    end
-    for _,r in ipairs(collect()) do
-        if grouped[r.model] then table.insert(grouped[r.model],r.price) end
+    status.Text='Reading currently loaded visible marketplace cards...'
+    task.wait(.15)
+    local groups={}
+    for _,b in ipairs(bikes) do if chosen[b] then groups[b]={} end end
+    for _,entry in ipairs(collect()) do
+        if groups[entry.model] then table.insert(groups[entry.model],entry.price) end
     end
     local lines,total={},0
     for _,b in ipairs(bikes) do
-        local prices=grouped[b]
-        if prices then
+        if groups[b] then
+            local prices=groups[b]
             table.sort(prices)
-            local uniq,last={},nil
-            for _,p in ipairs(prices) do if p~=last then uniq[#uniq+1]=p;last=p end end
-            total=total+#uniq
-            lines[#lines+1]='• '..b
-            if #uniq==0 then
-                lines[#lines+1]='  No unambiguous visible listing found.'
+            total=total+#prices
+            lines[#lines+1]=b
+            if #prices==0 then
+                lines[#lines+1]='  No confidently matched visible listings.'
             else
-                lines[#lines+1]='  Cheapest detected: '..money(uniq[1])
+                lines[#lines+1]='  Cheapest detected: '..money(prices[1])
                 local top={}
-                for i=1,math.min(5,#uniq) do top[#top+1]=money(uniq[i]) end
-                lines[#lines+1]='  Detected prices: '..table.concat(top,', ')
-                if #uniq>=3 then
-                    local mid=uniq[math.floor((#uniq+1)/2)]
-                    lines[#lines+1]='  Comparable price estimate: '..money(mid)
-                    lines[#lines+1]='  Potential gross spread: '..money(mid-uniq[1])
-                    lines[#lines+1]='  Sale likelihood: insufficient sales data'
+                for i=1,math.min(5,#prices) do top[#top+1]=money(prices[i]) end
+                lines[#lines+1]='  Top detected: '..table.concat(top,', ')
+                if #prices>=3 then
+                    local med=prices[math.floor((#prices+1)/2)]
+                    lines[#lines+1]='  Median asking price: '..money(med)
+                    lines[#lines+1]='  Gross spread estimate: '..money(med-prices[1])
                 else
-                    lines[#lines+1]='  Not enough prices for a resale estimate.'
+                    lines[#lines+1]='  Resale estimate needs 3+ matched listings.'
                 end
+                lines[#lines+1]='  Sale chance: unknown (no sold-price data)'
             end
             lines[#lines+1]=''
         end
     end
-    status.Text='Found '..total..' distinct visible price(s); not a full-market scan.'
-    lines[#lines+1]='Asking prices are not completed sales; fees excluded.'
+    lines[#lines+1]='Only visible loaded cards; no guarantees or fees included.'
     show(lines)
-    scan.Text='SCAN VISIBLE MARKET'
+    status.Text='Matched '..total..' visible listing card(s). Scroll market and rescan to check more.'
+    scan.Text='SCAN MARKET'
     busy=false
 end)
-print('[NexMarketPRO] Loaded. Tap N to open the menu.')
+print('[NexMarketPRO] Ready. Tap the gold N button.')
