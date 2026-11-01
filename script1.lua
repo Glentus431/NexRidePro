@@ -1,189 +1,162 @@
 
--- NEXRIDE AUTO SNIPER V4
--- Delta iPhone - experimental screen tapper
--- Uses visible GUI elements, not purchase remotes
+-- NEXRIDE AUTO SNIPER V5
+-- Delta iPhone | One purchase attempt
+-- Experimental: NexMarket hierarchy not verified
 
-local Players = game:GetService("Players")
+local P = game:GetService("Players")
 local VIM = game:GetService("VirtualInputManager")
-local player = Players.LocalPlayer
-local pg = player:WaitForChild("PlayerGui")
+local pg = P.LocalPlayer:WaitForChild("PlayerGui")
 
 if _G.NexRideStop then
-    _G.NexRideStop()
+    pcall(_G.NexRideStop)
 end
 
-local alive = true
-local enabled = false
-local busy = false
+local old = pg:FindFirstChild("NexSniperV5")
+if old then old:Destroy() end
+
+local alive, running = true, false
+local generation = 0
 local attempts = 0
-local token = 0
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "NexRideSniperV4"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.Parent = pg
+local ui = Instance.new("ScreenGui")
+ui.Name = "NexSniperV5"
+ui.ResetOnSpawn = false
+ui.Parent = pg
 
-local frame = Instance.new("Frame")
-frame.Size = UDim2.fromOffset(290, 335)
-frame.Position = UDim2.new(0.5,-145,0.2,0)
-frame.BackgroundColor3 = Color3.fromRGB(22,25,35)
-frame.Active = true
-frame.Draggable = true
-frame.Parent = gui
-
-local function round(o)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0,10)
-    c.Parent = o
-end
-round(frame)
-
-local function label(s,y,h)
-    local t = Instance.new("TextLabel")
-    t.Size = UDim2.new(1,-20,0,h)
-    t.Position = UDim2.fromOffset(10,y)
-    t.BackgroundTransparency = 1
-    t.TextColor3 = Color3.new(1,1,1)
-    t.TextScaled = true
-    t.TextWrapped = true
-    t.Text = s
-    t.Parent = frame
-    return t
+local function make(class, parent, props)
+    local o = Instance.new(class)
+    for k,v in pairs(props) do o[k] = v end
+    o.Parent = parent
+    return o
 end
 
-label("NEXRIDE AUTO SNIPER V4",10,30)
+local panel = make("Frame",ui,{
+    Size=UDim2.fromOffset(300,345),
+    Position=UDim2.new(.5,-150,.22,0),
+    BackgroundColor3=Color3.fromRGB(18,22,34),
+    Active=true,
+    Draggable=true
+})
 
-local function input(s,y)
-    local b = Instance.new("TextBox")
-    b.Size = UDim2.new(1,-30,0,38)
-    b.Position = UDim2.fromOffset(15,y)
-    b.BackgroundColor3 = Color3.fromRGB(42,46,60)
-    b.TextColor3 = Color3.new(1,1,1)
-    b.Text = s
-    b.ClearTextOnFocus = false
-    b.Parent = frame
-    round(b)
+make("UICorner",panel,{
+    CornerRadius=UDim.new(0,16)
+})
+
+local function text(s,y,h,size)
+    return make("TextLabel",panel,{
+        Position=UDim2.fromOffset(15,y),
+        Size=UDim2.new(1,-30,0,h),
+        BackgroundTransparency=1,
+        Text=s,
+        TextColor3=Color3.fromRGB(240,245,255),
+        TextSize=size or 15,
+        Font=Enum.Font.GothamMedium,
+        TextWrapped=true
+    })
+end
+
+text("NEXRIDE  /  SNIPER V5",12,32,20)
+text("ONE PURCHASE MODE",44,22,12)
+
+local function field(title,y,value)
+    text(title,y,18,12)
+    local b=make("TextBox",panel,{
+        Position=UDim2.fromOffset(15,y+20),
+        Size=UDim2.new(1,-30,0,34),
+        BackgroundColor3=Color3.fromRGB(35,42,59),
+        TextColor3=Color3.new(1,1,1),
+        Text=value,
+        TextSize=17,
+        ClearTextOnFocus=false
+    })
+    make("UICorner",b,{
+        CornerRadius=UDim.new(0,8)
+    })
     return b
 end
 
-local minimum = input("1000",50)
-local maximum = input("12000",95)
-local delayBox = input("0.5",140)
+local minBox=field("MINIMUM PRICE",73,"1000")
+local maxBox=field("MAXIMUM PRICE",135,"12000")
 
-local toggle = Instance.new("TextButton")
-toggle.Size = UDim2.new(1,-30,0,46)
-toggle.Position = UDim2.fromOffset(15,190)
-toggle.BackgroundColor3 = Color3.fromRGB(30,160,85)
-toggle.TextColor3 = Color3.new(1,1,1)
-toggle.TextScaled = true
-toggle.Text = "START AUTO BUYER"
-toggle.Parent = frame
-round(toggle)
+local toggle=make("TextButton",panel,{
+    Position=UDim2.fromOffset(15,205),
+    Size=UDim2.new(1,-30,0,46),
+    BackgroundColor3=Color3.fromRGB(35,165,105),
+    TextColor3=Color3.new(1,1,1),
+    Text="START SNIPER",
+    TextSize=17,
+    Font=Enum.Font.GothamBold
+})
+make("UICorner",toggle,{
+    CornerRadius=UDim.new(0,10)
+})
 
-local status = label("Status: OFF",245,30)
-local priceLabel = label("Cheapest: --",278,25)
-local countLabel = label("Attempts: 0",307,20)
+local status=text("OFF",264,35,13)
+local result=text("Waiting for NexMarket",302,30,12)
 
-local function active(o)
-    if not o or not o:IsA("GuiObject") then
+local function setStatus(s)
+    status.Text=s
+end
+
+local function visible(o)
+    if not o or not o:IsA("GuiObject")
+        or o:IsDescendantOf(ui) then
         return false
     end
-
-    if o:IsDescendantOf(gui) then
-        return false
-    end
-
-    local p = o
-    while p and p ~= pg do
+    local p=o
+    while p and p~=pg do
         if p:IsA("GuiObject") and not p.Visible then
             return false
         end
-        p = p.Parent
+        p=p.Parent
     end
-
-    return o.AbsoluteSize.X > 0
-       and o.AbsoluteSize.Y > 0
+    return o.AbsoluteSize.X>0
+       and o.AbsoluteSize.Y>0
 end
 
-local function tap(o)
-    if not active(o) then return false end
-
-    local p = o.AbsolutePosition
-    local s = o.AbsoluteSize
-    local x = p.X + s.X/2
-    local y = p.Y + s.Y/2
-
-    local ok = pcall(function()
-        VIM:SendMouseButtonEvent(
-            x,y,0,true,game,0
-        )
-        task.wait(0.04)
-        VIM:SendMouseButtonEvent(
-            x,y,0,false,game,0
-        )
-    end)
-
-    if not ok then
-        status.Text = "Screen taps unsupported"
-    end
-
-    return ok
+local function inside(o,root)
+    return o==root or o:IsDescendantOf(root)
 end
 
-local function textObjects()
-    local result = {}
+local function price(s)
+    local n=s:match("%$%s*([%d,]+)")
+    return n and tonumber((n:gsub(",","")))
+end
+
+local function getText(o)
+    if o:IsA("TextLabel")
+        or o:IsA("TextButton") then
+        return o.Text
+    end
+    return ""
+end
+
+local function hasWord(root,word)
+    for _,o in ipairs(root:GetDescendants()) do
+        if visible(o) and
+            getText(o):lower()==word then
+            return true
+        end
+    end
+    return false
+end
+
+-- Find a plausible market container, not Shop.
+local function findMarket()
+    local best,bestArea=nil,math.huge
 
     for _,o in ipairs(pg:GetDescendants()) do
-        if (o:IsA("TextLabel")
-            or o:IsA("TextButton"))
-            and active(o) then
-            table.insert(result,o)
-        end
-    end
+        if o:IsA("GuiObject")
+            and visible(o)
+            and not o:IsDescendantOf(ui)
+            and hasWord(o,"all")
+            and hasWord(o,"electric") then
 
-    return result
-end
+            local area=o.AbsoluteSize.X*
+                o.AbsoluteSize.Y
 
-local function findText(word)
-    word = word:lower()
-
-    for _,o in ipairs(textObjects()) do
-        if o.Text:lower() == word then
-            return o
-        end
-    end
-end
-
-local function findBuy()
-    for _,o in ipairs(textObjects()) do
-        if o.Text:lower():find("buy for",1,true) then
-            return o
-        end
-    end
-end
-
-local function parsePrice(s)
-    local n = s:match("%$([%d,]+)")
-    if not n then return nil end
-    return tonumber((n:gsub(",","")))
-end
-
-local function findCheapest(lo,hi)
-    local best = nil
-
-    for _,o in ipairs(textObjects()) do
-        local n = parsePrice(o.Text)
-
-        if n and n >= lo and n <= hi then
-            -- Ignore buttons displaying purchase totals
-            if not o.Text:lower():find("buy") then
-                if not best or n < best.price then
-                    best = {
-                        price = n,
-                        object = o
-                    }
-                end
+            if area>20000 and area<bestArea then
+                best,bestArea=o,area
             end
         end
     end
@@ -191,180 +164,275 @@ local function findCheapest(lo,hi)
     return best
 end
 
-local function findCard(o)
-    local p = o.Parent
+local function tap(o,root)
+    if not visible(o) or not inside(o,root) then
+        return false
+    end
 
-    for i=1,5 do
-        if not p then break end
+    local p=o.AbsolutePosition
+    local s=o.AbsoluteSize
+    local x=p.X+s.X/2
+    local y=p.Y+s.Y/2
 
-        if p:IsA("GuiButton") and active(p) then
+    -- Never tap outside the detected market.
+    local r=root.AbsolutePosition
+    local z=root.AbsoluteSize
+    if x<r.X or x>r.X+z.X
+        or y<r.Y or y>r.Y+z.Y then
+        return false
+    end
+
+    local ok=pcall(function()
+        VIM:SendMouseButtonEvent(
+            x,y,0,true,game,0)
+        task.wait(.04)
+        VIM:SendMouseButtonEvent(
+            x,y,0,false,game,0)
+    end)
+    return ok
+end
+
+local function tab(root,name)
+    for _,o in ipairs(root:GetDescendants()) do
+        if visible(o)
+            and getText(o):lower()==name then
+            if o:IsA("GuiButton") then
+                return o
+            end
+            if o.Parent
+                and o.Parent:IsA("GuiButton") then
+                return o.Parent
+            end
+        end
+    end
+end
+
+local function forbidden(o)
+    local s=(o.Name.." "..getText(o)):lower()
+    return s:find("shop",1,true)
+        or s:find("store",1,true)
+        or s:find("inventory",1,true)
+        or s:find("garage",1,true)
+end
+
+local function findCard(o,root)
+    local p=o.Parent
+
+    while p and p~=root do
+        if forbidden(p) then return nil end
+
+        if p:IsA("GuiButton")
+            and visible(p)
+            and not forbidden(p) then
             return p
         end
 
-        for _,child in ipairs(p:GetDescendants()) do
-            if child:IsA("GuiButton")
-                and active(child) then
-                return child
-            end
-        end
-
-        p = p.Parent
+        p=p.Parent
     end
-
     return nil
 end
 
-local function refresh()
-    status.Text = "Refreshing..."
+local function cheapest(root,lo,hi)
+    local best=nil
 
-    local electric = findText("Electric")
-    if not electric then
-        status.Text = "Electric tab not found"
-        return false
+    for _,o in ipairs(root:GetDescendants()) do
+        if visible(o)
+            and (o:IsA("TextLabel")
+            or o:IsA("TextButton")) then
+
+            local s=getText(o)
+            local n=price(s)
+
+            if n and n>=lo and n<=hi
+                and not s:lower():find("buy") then
+
+                local card=findCard(o,root)
+
+                if card and
+                    (not best or n<best.price) then
+                    best={
+                        price=n,
+                        card=card
+                    }
+                end
+            end
+        end
     end
+    return best
+end
 
-    if not tap(electric) then return false end
-    task.wait(0.15)
+local function buyButton(root,n)
+    for _,o in ipairs(root:GetDescendants()) do
+        if visible(o) then
+            local s=getText(o):lower()
+            if s:find("buy for",1,true)
+                and price(s)==n then
 
-    local all = findText("All")
-    if not all then
-        status.Text = "All tab not found"
-        return false
+                if o:IsA("GuiButton") then
+                    return o
+                end
+                if o.Parent
+                    and o.Parent:IsA("GuiButton") then
+                    return o.Parent
+                end
+            end
+        end
     end
+end
 
-    if not tap(all) then return false end
-    task.wait(0.15)
+local function stop(message)
+    running=false
+    generation+=1
+    toggle.Text="START SNIPER"
+    toggle.BackgroundColor3=
+        Color3.fromRGB(35,165,105)
+    setStatus(message or "STOPPED")
+end
 
+local function waitActive(t,id)
+    local finish=os.clock()+t
+    while os.clock()<finish do
+        if not running or generation~=id then
+            return false
+        end
+        task.wait(.03)
+    end
     return true
 end
 
-local function purchase(candidate,lo,hi,id)
-    if not enabled or token ~= id then return end
+local function run(lo,hi,id)
+    while running and generation==id do
+        local root=findMarket()
 
-    busy = true
-    status.Text = "Opening cheapest bike..."
+        if not root then
+            stop("NexMarket not identified")
+            return
+        end
 
-    local card = findCard(candidate.object)
+        local all=tab(root,"all")
+        local electric=tab(root,"electric")
 
-    if not card or not tap(card) then
-        status.Text = "Cannot open bike card"
-        busy = false
-        return
+        if not all or not electric then
+            stop("Market tabs not identified")
+            return
+        end
+
+        setStatus("Scanning All...")
+        local candidate=cheapest(root,lo,hi)
+
+        if candidate then
+            result.Text="Lowest: $"..candidate.price
+            setStatus("Opening listing...")
+
+            if not tap(candidate.card,root) then
+                stop("Listing tap failed")
+                return
+            end
+
+            if not waitActive(.25,id) then return end
+
+            -- Re-detect market after opening listing.
+            root=findMarket()
+            if not root then
+                stop("Cannot verify bike details")
+                return
+            end
+
+            local first=buyButton(root,candidate.price)
+            if not first then
+                stop("Buy price not verified")
+                return
+            end
+
+            setStatus("Opening confirmation...")
+            if not tap(first,root) then
+                stop("Buy tap failed")
+                return
+            end
+
+            if not waitActive(.3,id) then return end
+
+            -- Fail closed unless a different
+            -- confirmation button can be identified.
+            root=findMarket()
+            if not root then
+                stop("Confirmation not identified")
+                return
+            end
+
+            local confirm=buyButton(
+                root,candidate.price
+            )
+
+            if not confirm or confirm==first then
+                stop("Confirmation not verified")
+                return
+            end
+
+            setStatus("Attempting purchase...")
+
+            if tap(confirm,root) then
+                attempts+=1
+                result.Text=
+                    "Purchase attempts: "..attempts
+                stop("STOPPED - purchase attempted")
+            else
+                stop("Confirmation tap failed")
+            end
+            return
+        end
+
+        setStatus("Refreshing Electric > All")
+
+        if not tap(electric,root) then
+            stop("Electric tap failed")
+            return
+        end
+        if not waitActive(.15,id) then return end
+
+        root=findMarket()
+        all=root and tab(root,"all")
+        if not all or not tap(all,root) then
+            stop("All tab tap failed")
+            return
+        end
+
+        if not waitActive(.2,id) then return end
     end
-
-    task.wait(0.2)
-    if not enabled or token ~= id then
-        busy = false
-        return
-    end
-
-    local buy = findBuy()
-    local displayed = buy and parsePrice(buy.Text)
-
-    -- Never buy if the displayed price differs
-    if not displayed
-        or displayed ~= candidate.price
-        or displayed < lo
-        or displayed > hi then
-
-        status.Text = "Price verification failed"
-        busy = false
-        return
-    end
-
-    status.Text = "Opening confirmation..."
-
-    if not tap(buy) then
-        busy = false
-        return
-    end
-
-    task.wait(0.2)
-
-    if not enabled or token ~= id then
-        busy = false
-        return
-    end
-
-    local confirm = findBuy()
-    local finalPrice = confirm
-        and parsePrice(confirm.Text)
-
-    if finalPrice ~= displayed then
-        status.Text = "Confirmation price mismatch"
-        busy = false
-        return
-    end
-
-    if tap(confirm) then
-        attempts += 1
-        countLabel.Text = "Attempts: "..attempts
-        status.Text = "Purchase attempted"
-    end
-
-    task.wait(0.4)
-    busy = false
-end
-
-local function stop()
-    enabled = false
-    token += 1
-    toggle.Text = "START AUTO BUYER"
-    toggle.BackgroundColor3 =
-        Color3.fromRGB(30,160,85)
-    status.Text = "Status: OFF"
 end
 
 toggle.MouseButton1Click:Connect(function()
-    if enabled then
-        stop()
+    if running then
+        stop("STOPPED")
         return
     end
 
-    local lo = tonumber(minimum.Text)
-    local hi = tonumber(maximum.Text)
-    local interval = tonumber(delayBox.Text)
+    local lo=tonumber(minBox.Text)
+    local hi=tonumber(maxBox.Text)
 
-    if not lo or not hi or lo < 0
-        or lo > hi or not interval
-        or interval < 0.2 then
-        status.Text = "Invalid settings"
+    if not lo or not hi or lo<0 or lo>hi then
+        setStatus("Invalid price range")
         return
     end
 
-    enabled = true
-    token += 1
-    local id = token
+    running=true
+    generation+=1
+    local id=generation
 
-    toggle.Text = "STOP AUTO BUYER"
-    toggle.BackgroundColor3 =
-        Color3.fromRGB(200,55,65)
+    toggle.Text="STOP SNIPER"
+    toggle.BackgroundColor3=
+        Color3.fromRGB(200,65,75)
 
     task.spawn(function()
-        while alive and enabled and token == id do
-            if not busy then
-                status.Text = "Scanning All..."
-
-                local candidate = findCheapest(lo,hi)
-
-                if candidate then
-                    priceLabel.Text =
-                        "Detected: $"..candidate.price
-
-                    purchase(candidate,lo,hi,id)
-                else
-                    priceLabel.Text = "Cheapest: --"
-                    refresh()
-                end
-            end
-
-            task.wait(interval)
+        local ok,err=pcall(run,lo,hi,id)
+        if not ok then
+            stop("Error: "..tostring(err):sub(1,35))
         end
     end)
 end)
 
-_G.NexRideStop = function()
-    alive = false
-    stop()
-    gui:Destroy()
+_G.NexRideStop=function()
+    alive=false
+    stop("CLOSED")
+    ui:Destroy()
 end
