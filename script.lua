@@ -1,240 +1,209 @@
 
--- NEXRIDE AUTO SNIPER V9
+-- NEXRIDE AUTO BUYER V10
 -- Main file: script.lua
--- Continuous ON/OFF, lowest-price selection
--- Shop and top navigation protection
--- Experimental: game GUI structure is unverified
+-- Continuous scanning / ON-OFF
+-- Cheapest qualifying visible listing
+-- No Shop or top-row clicks
+-- Experimental: NexRide UI may change
 
 local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
 local VIM = game:GetService("VirtualInputManager")
+local Camera = workspace.CurrentCamera
 
 local pg = Players.LocalPlayer:WaitForChild("PlayerGui")
 
--- Close older versions when possible
-for _, key in ipairs({
-    "NexRideStop",
-    "NexSniperV7Stop",
-    "NexV9Stop"
-}) do
-    if type(_G[key]) == "function" then
-        pcall(_G[key])
-    end
+if type(_G.NexRideStop) == "function" then
+    pcall(_G.NexRideStop)
 end
 
 for _, name in ipairs({
     "NexSniperV5",
     "NexSniperV6",
     "NexSniperV7",
-    "NexSniperV9"
+    "NexSniperV9",
+    "NexSniperV10"
 }) do
     local old = pg:FindFirstChild(name)
     if old then old:Destroy() end
 end
 
 local running = false
-local token = 0
-local scanNumber = 0
-local purchaseAttempted = false
+local generation = 0
+local scanCount = 0
+local attempted = false
 
-local REFRESH_DELAY = 0.5
-local SCAN_DELAY = 0.4
-
--- Extra protected area at the top of the screen.
--- Coordinates are pixels, not percentages.
-local SAFE_TOP = 150
+local SCAN_DELAY = 0.35
+local REFRESH_DELAY = 0.4
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "NexSniperV9"
+gui.Name = "NexSniperV10"
 gui.ResetOnSpawn = false
-gui.DisplayOrder = 999
+gui.DisplayOrder = 1000
 gui.Parent = pg
 
-local function new(class, parent, props)
-    local o = Instance.new(class)
+local function make(class, parent, props)
+    local obj = Instance.new(class)
     for k, v in pairs(props) do
-        o[k] = v
+        obj[k] = v
     end
-    o.Parent = parent
-    return o
+    obj.Parent = parent
+    return obj
 end
 
-local panel = new("Frame", gui, {
-    Size = UDim2.fromOffset(305, 345),
-    Position = UDim2.new(0.5, -152, 0.2, 0),
-    BackgroundColor3 = Color3.fromRGB(19, 24, 37),
+local panel = make("Frame", gui, {
+    Size = UDim2.fromOffset(310, 365),
+    Position = UDim2.new(0.25, 0, 0.15, 0),
+    BackgroundColor3 = Color3.fromRGB(17, 23, 36),
     Active = true,
     Draggable = true
 })
 
-new("UICorner", panel, {
-    CornerRadius = UDim.new(0, 14)
+make("UICorner", panel, {
+    CornerRadius = UDim.new(0, 13)
 })
 
 local function label(text, y, height, size)
-    return new("TextLabel", panel, {
+    return make("TextLabel", panel, {
         Position = UDim2.fromOffset(12, y),
         Size = UDim2.new(1, -24, 0, height),
         BackgroundTransparency = 1,
         Text = text,
-        TextColor3 = Color3.new(1, 1, 1),
-        Font = Enum.Font.GothamMedium,
         TextSize = size or 13,
-        TextWrapped = true
+        TextWrapped = true,
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.GothamMedium
     })
 end
 
-label("NEXRIDE AUTO SNIPER V9", 8, 32, 19)
-label("CONTINUOUS MARKET SCANNER", 39, 19, 11)
+label("NEXRIDE AUTO BUYER V10", 8, 32, 20)
+label("CHEAPEST PRICE • AUTO REFRESH", 41, 19, 11)
 
 local function field(title, y, value)
     label(title, y, 19, 12)
 
-    local box = new("TextBox", panel, {
+    local box = make("TextBox", panel, {
         Position = UDim2.fromOffset(15, y + 20),
-        Size = UDim2.new(1, -30, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(38, 46, 65),
+        Size = UDim2.new(1, -30, 0, 36),
+        BackgroundColor3 = Color3.fromRGB(39, 47, 67),
         TextColor3 = Color3.new(1, 1, 1),
-        Text = value,
         TextSize = 17,
+        Text = value,
         ClearTextOnFocus = false
     })
 
-    new("UICorner", box, {
+    make("UICorner", box, {
         CornerRadius = UDim.new(0, 8)
     })
 
     return box
 end
 
-local minBox = field("MINIMUM PRICE", 64, "1000")
-local maxBox = field("MAXIMUM PRICE", 124, "12000")
+local minBox = field("MINIMUM PRICE", 66, "1000")
+local maxBox = field("MAXIMUM PRICE", 126, "11500")
 
-local toggle = new("TextButton", panel, {
-    Position = UDim2.fromOffset(15, 187),
-    Size = UDim2.new(1, -30, 0, 45),
-    BackgroundColor3 = Color3.fromRGB(34, 170, 100),
-    TextColor3 = Color3.new(1, 1, 1),
-    Font = Enum.Font.GothamBold,
+local toggle = make("TextButton", panel, {
+    Position = UDim2.fromOffset(15, 190),
+    Size = UDim2.new(1, -30, 0, 47),
+    Text = "START AUTO BUYER",
     TextSize = 17,
-    Text = "START AUTO BUYER"
+    Font = Enum.Font.GothamBold,
+    TextColor3 = Color3.new(1, 1, 1),
+    BackgroundColor3 = Color3.fromRGB(25, 165, 100)
 })
 
-new("UICorner", toggle, {
+make("UICorner", toggle, {
     CornerRadius = UDim.new(0, 9)
 })
 
-local status = label("Status: OFF", 239, 30, 13)
-local priceLabel = label("Cheapest: --", 273, 25, 14)
-local scanLabel = label("Scans: 0", 300, 20, 12)
-local info = label("Waiting for NexMarket", 321, 20, 11)
+local status = label("Status: OFF", 246, 29, 13)
+local foundLabel = label("Listings detected: 0", 275, 22, 13)
+local cheapestLabel = label("Cheapest: --", 298, 23, 14)
+local scanLabel = label("Checks: 0", 324, 20, 12)
+local detailLabel = label("Open NexMarket > Browse > All", 345, 18, 11)
 
-local function setStatus(s)
+local function statusText(s)
     status.Text = "Status: " .. s
 end
 
-local function stop(s)
+local function stop(reason)
     running = false
-    token += 1
+    generation += 1
 
     toggle.Text = "START AUTO BUYER"
     toggle.BackgroundColor3 =
-        Color3.fromRGB(34, 170, 100)
+        Color3.fromRGB(25, 165, 100)
 
-    setStatus(s or "OFF")
+    statusText(reason or "OFF")
 end
 
 local function active(id)
     return running
-        and token == id
+        and generation == id
         and gui.Parent ~= nil
 end
 
 local function pause(seconds, id)
-    local deadline = os.clock() + seconds
+    local finish = os.clock() + seconds
 
-    while os.clock() < deadline do
-        if not active(id) then return false end
-        task.wait(0.04)
+    while os.clock() < finish do
+        if not active(id) then
+            return false
+        end
+        task.wait(0.03)
     end
 
     return active(id)
 end
 
-local function visible(o)
-    if not o or not o:IsA("GuiObject")
-        or o:IsDescendantOf(gui) then
+local function visible(obj)
+    if not obj or not obj:IsA("GuiObject")
+        or obj:IsDescendantOf(gui) then
         return false
     end
 
-    local p = o
+    local current = obj
 
-    while p and p ~= pg do
-        if p:IsA("GuiObject") and not p.Visible then
+    while current and current ~= pg do
+        if current:IsA("GuiObject")
+            and not current.Visible then
             return false
         end
-        p = p.Parent
+
+        current = current.Parent
     end
 
-    return o.AbsoluteSize.X > 0
-        and o.AbsoluteSize.Y > 0
+    return obj.AbsoluteSize.X > 0
+        and obj.AbsoluteSize.Y > 0
 end
 
-local function textOf(o)
-    if o:IsA("TextLabel")
-        or o:IsA("TextButton")
-        or o:IsA("TextBox") then
-        return o.Text
+local function textOf(obj)
+    if obj:IsA("TextLabel")
+        or obj:IsA("TextButton")
+        or obj:IsA("TextBox") then
+        return obj.Text
     end
+
     return ""
 end
 
-local function lower(o)
-    return textOf(o):lower()
-end
-
 local function priceOf(s)
-    local n = s:match("%$%s*([%d,]+)")
-    if not n then return nil end
-
-    return tonumber((n:gsub(",", "")))
+    local raw = s:match("%$%s*([%d,]+)")
+    if not raw then return nil end
+    return tonumber((raw:gsub(",", "")))
 end
 
-local blockedWords = {
-    "shop",
-    "store",
-    "garage",
-    "inventory",
-    "toolbar",
-    "topbar",
-    "navbar",
-    "dropdown",
-    "customize",
-    "upgrade"
-}
+local function center(obj)
+    local p = obj.AbsolutePosition
+    local s = obj.AbsoluteSize
 
-local function blocked(o)
-    local p = o
-
-    while p and p ~= pg do
-        local name = p.Name:lower()
-        local text = lower(p)
-
-        for _, word in ipairs(blockedWords) do
-            if name:find(word, 1, true)
-                or text:find(word, 1, true) then
-                return true
-            end
-        end
-
-        p = p.Parent
-    end
-
-    return false
+    return p.X + s.X / 2,
+           p.Y + s.Y / 2
 end
 
-local function containsPoint(o, x, y)
-    local p = o.AbsolutePosition
-    local s = o.AbsoluteSize
+local function within(obj, x, y)
+    local p = obj.AbsolutePosition
+    local s = obj.AbsoluteSize
 
     return x >= p.X
         and x <= p.X + s.X
@@ -242,26 +211,103 @@ local function containsPoint(o, x, y)
         and y <= p.Y + s.Y
 end
 
--- Reject any touch coordinate that overlaps
--- a visible Shop or top-navigation button.
-local function protectedPoint(x, y)
-    if y < SAFE_TOP then
+local function screen()
+    local v = Camera.ViewportSize
+    return v.X, v.Y
+end
+
+-- Locate the phone from NexMarket's visible text.
+-- This avoids scanning the rest of the Roblox UI.
+
+local function findPhone()
+    local candidates = {}
+
+    for _, obj in ipairs(pg:GetDescendants()) do
+        if visible(obj)
+            and textOf(obj):upper():find(
+                "NEXMARKET", 1, true
+            ) then
+            table.insert(candidates, obj)
+        end
+    end
+
+    local sw, sh = screen()
+
+    for _, header in ipairs(candidates) do
+        local p = header.Parent
+
+        while p and p ~= pg do
+            if p:IsA("GuiObject") then
+                local s = p.AbsoluteSize
+                local pos = p.AbsolutePosition
+
+                if s.X >= sw * 0.13
+                    and s.X <= sw * 0.55
+                    and s.Y >= sh * 0.45
+                    and pos.X > sw * 0.35 then
+
+                    return p
+                end
+            end
+
+            p = p.Parent
+        end
+    end
+
+    return nil
+end
+
+local function phoneRect(phone)
+    local p = phone.AbsolutePosition
+    local s = phone.AbsoluteSize
+
+    return p.X, p.Y, s.X, s.Y
+end
+
+local function inPhoneRegion(phone, x, y, region)
+    local px, py, pw, ph = phoneRect(phone)
+
+    if x < px or x > px + pw
+        or y < py or y > py + ph then
+        return false
+    end
+
+    local ry = (y - py) / ph
+
+    if region == "list" then
+        return ry >= 0.36 and ry <= 0.96
+    elseif region == "tabs" then
+        return ry >= 0.20 and ry <= 0.47
+    elseif region == "purchase" then
+        return ry >= 0.20 and ry <= 0.97
+    end
+
+    return false
+end
+
+local function blockedPoint(x, y, phone)
+    if not inPhoneRegion(
+        phone, x, y, "purchase"
+    ) then
         return true
     end
 
-    for _, o in ipairs(pg:GetDescendants()) do
-        if visible(o) and o:IsA("GuiButton") then
-            local name = o.Name:lower()
-            local text = lower(o)
+    -- Never click a visible Shop control.
+    for _, obj in ipairs(pg:GetDescendants()) do
+        if visible(obj)
+            and obj:IsA("GuiButton") then
 
-            local forbidden =
-                name:find("shop", 1, true)
-                or text:find("shop", 1, true)
+            local name = obj.Name:lower()
+            local txt = textOf(obj):lower()
+
+            if name:find("shop", 1, true)
+                or txt:find("shop", 1, true)
                 or name:find("topbar", 1, true)
-                or name:find("toolbar", 1, true)
+                or name:find("toolbar", 1, true) then
 
-            if forbidden and containsPoint(o, x, y) then
-                return true
+                if within(obj, x, y) then
+                    return true
+                end
             end
         end
     end
@@ -269,50 +315,14 @@ local function protectedPoint(x, y)
     return false
 end
 
-local function buttonFor(o, boundary)
-    local p = o
-
-    while p and p ~= boundary do
-        if blocked(p) then
-            return nil
-        end
-
-        if p:IsA("GuiButton") and visible(p) then
-            return p
-        end
-
-        p = p.Parent
-    end
-
-    return nil
-end
-
-local function tap(button, boundary)
-    if not button
-        or not button:IsA("GuiButton")
-        or not visible(button)
-        or blocked(button) then
+local function tapPoint(x, y, phone, region)
+    if not inPhoneRegion(
+        phone, x, y, region
+    ) then
         return false
     end
 
-    if boundary
-        and not button:IsDescendantOf(boundary) then
-        return false
-    end
-
-    local p = button.AbsolutePosition
-    local s = button.AbsoluteSize
-
-    -- Reject oversized panels and whole-row controls.
-    if s.X > 350 or s.Y > 100 then
-        return false
-    end
-
-    local x = p.X + s.X / 2
-    local y = p.Y + s.Y / 2
-
-    if protectedPoint(x, y) then
-        setStatus("Protected Shop/top row")
+    if blockedPoint(x, y, phone) then
         return false
     end
 
@@ -320,138 +330,128 @@ local function tap(button, boundary)
         VIM:SendMouseButtonEvent(
             x, y, 0, true, game, 0
         )
-
-        task.wait(0.05)
-
+        task.wait(0.04)
         VIM:SendMouseButtonEvent(
             x, y, 0, false, game, 0
         )
     end)
 
-    if not ok then
-        setStatus("Touch input unsupported")
-    end
-
     return ok
 end
 
-local function findExact(root, value)
-    for _, o in ipairs(root:GetDescendants()) do
-        if visible(o) and lower(o) == value then
-            return o
+local function findTextInPhone(phone, value)
+    value = value:lower()
+
+    for _, obj in ipairs(phone:GetDescendants()) do
+        if visible(obj)
+            and textOf(obj):lower() == value then
+            return obj
         end
     end
 end
 
-local function findMarket()
-    local all = findExact(pg, "all")
-    local electric = findExact(pg, "electric")
+local function tapTab(phone, name)
+    local obj = findTextInPhone(phone, name)
 
-    if not all or not electric then
-        return nil
+    if not obj then
+        return false
     end
 
-    local ancestors = {}
-    local p = all
+    local x, y = center(obj)
 
-    while p and p ~= pg do
-        ancestors[p] = true
-        p = p.Parent
-    end
-
-    p = electric
-
-    while p and p ~= pg do
-        if ancestors[p] and p:IsA("GuiObject") then
-            -- Must be larger than a simple tab bar.
-            if p.AbsoluteSize.X >= 220
-                and p.AbsoluteSize.Y >= 250 then
-                return p
-            end
-        end
-
-        p = p.Parent
-    end
+    return tapPoint(x, y, phone, "tabs")
 end
 
-local function findCheapest(root, lo, hi)
-    local best = nil
-    local seen = {}
+-- Scan only price labels inside the phone's
+-- visible listing area.
+local function getListings(phone)
+    local results = {}
+    local used = {}
 
-    for _, o in ipairs(root:GetDescendants()) do
-        if visible(o)
-            and (o:IsA("TextLabel")
-            or o:IsA("TextButton")) then
+    for _, obj in ipairs(phone:GetDescendants()) do
+        if visible(obj)
+            and (obj:IsA("TextLabel")
+            or obj:IsA("TextButton")) then
 
-            local text = lower(o)
+            local text = textOf(obj)
             local price = priceOf(text)
+            local x, y = center(obj)
 
             if price
-                and price >= lo
-                and price <= hi
-                and not text:find("buy", 1, true)
-                and not text:find("balance", 1, true)
-                and not text:find("cash", 1, true) then
+                and inPhoneRegion(
+                    phone, x, y, "list"
+                )
+                and not text:lower():find(
+                    "buy", 1, true
+                ) then
 
-                local b = buttonFor(o, root)
+                -- Deduplicate labels at the same location.
+                local key =
+                    math.floor(x / 8) .. ":" ..
+                    math.floor(y / 8)
 
-                if b and not seen[b] then
-                    seen[b] = true
+                if not used[key] then
+                    used[key] = true
 
-                    local p = b.AbsolutePosition
-                    local s = b.AbsoluteSize
-
-                    local x = p.X + s.X / 2
-                    local y = p.Y + s.Y / 2
-
-                    if s.X <= 350
-                        and s.Y <= 100
-                        and not protectedPoint(x, y) then
-
-                        if not best or price < best.price then
-                            best = {
-                                price = price,
-                                button = b
-                            }
-                        end
-                    end
+                    table.insert(results, {
+                        price = price,
+                        x = x,
+                        y = y,
+                        object = obj
+                    })
                 end
             end
         end
     end
 
-    return best
+    table.sort(results, function(a, b)
+        return a.price < b.price
+    end)
+
+    return results
 end
 
-local function findBuy(expected, excluded)
-    for _, o in ipairs(pg:GetDescendants()) do
-        if visible(o) then
-            local text = lower(o)
+local function cheapestEligible(listings, lo, hi)
+    for _, item in ipairs(listings) do
+        if item.price >= lo
+            and item.price <= hi then
+            return item
+        end
+    end
+end
+
+-- Identify a visible Buy control whose displayed
+-- price matches the selected listing.
+local function buyButton(phone, expected, exclude)
+    for _, obj in ipairs(phone:GetDescendants()) do
+        if visible(obj) then
+            local text = textOf(obj):lower()
 
             if text:find("buy", 1, true)
                 and priceOf(text) == expected then
 
-                local b = buttonFor(o, pg)
+                local x, y = center(obj)
 
-                if b and b ~= excluded then
-                    return b
+                if obj ~= exclude
+                    and inPhoneRegion(
+                        phone, x, y, "purchase"
+                    )
+                    and not blockedPoint(
+                        x, y, phone
+                    ) then
+
+                    return obj
                 end
             end
         end
     end
 end
 
-local function refresh(root, id)
-    local electric = findExact(root, "electric")
-    local electricButton =
-        electric and buttonFor(electric, root)
+local function refresh(phone, id)
+    statusText("Refreshing Electric > All")
 
-    if not electricButton then
-        setStatus("Electric tab not found")
-        return false
-    end
-
-    if not tap(electricButton, root) then
+    if not tapTab(phone, "Electric") then
+        statusText("Electric tab unavailable")
         return false
     end
 
@@ -459,110 +459,172 @@ local function refresh(root, id)
         return false
     end
 
-    root = findMarket()
-    if not root then return false end
+    phone = findPhone()
+    if not phone then return false end
 
-    local all = findExact(root, "all")
-    local allButton = all and buttonFor(all, root)
-
-    if not allButton then
-        setStatus("All tab not found")
-        return false
-    end
-
-    if not tap(allButton, root) then
+    if not tapTab(phone, "All") then
+        statusText("All tab unavailable")
         return false
     end
 
     return pause(REFRESH_DELAY, id)
 end
 
-local function tryBuy(best, id)
-    setStatus("Opening cheapest listing")
+local function tryPurchase(phone, item, id)
+    statusText("Opening $" .. item.price)
 
-    if not tap(best.button) then
+    -- Tap the price area of the chosen card,
+    -- never an arbitrary parent button.
+    if not tapPoint(
+        item.x, item.y, phone, "list"
+    ) then
+        statusText("Listing tap blocked")
         return false
     end
 
-    if not pause(0.4, id) then
+    if not pause(0.35, id) then
         return false
     end
 
-    local first = findBuy(best.price)
+    phone = findPhone()
+    if not phone then
+        statusText("Phone screen changed")
+        return false
+    end
+
+    local first = buyButton(
+        phone, item.price, nil
+    )
 
     if not first then
-        setStatus("Price verification failed")
+        statusText("Buy price not verified")
         return false
     end
 
-    if not tap(first) then
+    local bx, by = center(first)
+
+    if not tapPoint(
+        bx, by, phone, "purchase"
+    ) then
         return false
     end
 
-    if not pause(0.4, id) then
+    if not pause(0.35, id) then
         return false
     end
 
-    local confirm = findBuy(best.price, first)
+    phone = findPhone()
+    if not phone then
+        statusText("Confirmation unavailable")
+        return false
+    end
+
+    local confirm = buyButton(
+        phone, item.price, first
+    )
 
     if not confirm then
-        setStatus("Confirmation not verified")
+        statusText("Confirmation not verified")
         return false
     end
+
+    local cx, cy = center(confirm)
 
     if not active(id) then
         return false
     end
 
-    -- Stop after one confirmation attempt.
-    purchaseAttempted = true
+    attempted = true
 
-    local clicked = tap(confirm)
+    local clicked = tapPoint(
+        cx, cy, phone, "purchase"
+    )
 
     if clicked then
-        info.Text = "Attempted purchase: $" .. best.price
+        detailLabel.Text =
+            "Attempted: $" .. item.price
         stop("Purchase attempted")
     else
-        stop("Confirmation tap blocked")
+        stop("Confirmation blocked")
     end
 
     return clicked
 end
 
-local function scanLoop(lo, hi, id)
-    while active(id) and not purchaseAttempted do
-        scanNumber += 1
-        scanLabel.Text = "Scans: " .. scanNumber
+local function scanner(lo, hi, id)
+    while active(id) and not attempted do
+        local phone = findPhone()
 
-        local root = findMarket()
+        if not phone then
+            foundLabel.Text =
+                "Listings detected: 0"
+            statusText("Waiting for NexMarket")
 
-        if root then
-            setStatus("Checking All listings")
-
-            local best = findCheapest(root, lo, hi)
-
-            if best then
-                priceLabel.Text =
-                    "Cheapest: $" .. best.price
-
-                local ok = tryBuy(best, id)
-
-                if ok or not active(id) then
-                    return
-                end
-
-                -- Do not repeatedly tap an uncertain
-                -- listing or purchase screen.
-                -- Wait for a safe return to Browse.
-                setStatus("Waiting for Browse screen")
-                pause(1, id)
-            else
-                priceLabel.Text = "Cheapest: --"
-                setStatus("Refreshing Electric > All")
-                refresh(root, id)
+            if not pause(SCAN_DELAY, id) then
+                return
             end
+            continue
+        end
+
+        -- Only scan the Browse / All screen.
+        local browse = findTextInPhone(
+            phone, "Browse"
+        )
+        local all = findTextInPhone(
+            phone, "All"
+        )
+
+        if not browse or not all then
+            statusText("Waiting for Browse / All")
+
+            if not pause(SCAN_DELAY, id) then
+                return
+            end
+            continue
+        end
+
+        local listings = getListings(phone)
+
+        scanCount += 1
+        scanLabel.Text =
+            "Checks: " .. scanCount
+
+        foundLabel.Text =
+            "Listings detected: " ..
+            #listings
+
+        local best = cheapestEligible(
+            listings, lo, hi
+        )
+
+        if best then
+            cheapestLabel.Text =
+                "Cheapest: $" .. best.price
+
+            detailLabel.Text =
+                "Eligible bike detected"
+
+            if tryPurchase(phone, best, id) then
+                return
+            end
+
+            if not active(id) then return end
+
+            -- Avoid hammering a listing screen
+            -- when verification has failed.
+            statusText("Waiting for Browse")
+            pause(0.8, id)
         else
-            setStatus("Open NexMarket Browse")
+            if #listings > 0 then
+                cheapestLabel.Text =
+                    "Lowest seen: $" ..
+                    listings[1].price
+            else
+                cheapestLabel.Text =
+                    "Cheapest: --"
+            end
+
+            refresh(phone, id)
         end
 
         if not pause(SCAN_DELAY, id) then
@@ -582,37 +644,36 @@ toggle.MouseButton1Click:Connect(function()
 
     if not lo or not hi
         or lo < 0 or lo > hi then
-        setStatus("Invalid price range")
+        statusText("Invalid price range")
         return
     end
 
     running = true
-    purchaseAttempted = false
-    token += 1
+    attempted = false
+    generation += 1
 
-    local id = token
+    local id = generation
 
     toggle.Text = "STOP AUTO BUYER"
     toggle.BackgroundColor3 =
-        Color3.fromRGB(205, 60, 75)
+        Color3.fromRGB(205, 55, 75)
 
-    setStatus("ON - scanning")
+    statusText("ON")
 
     task.spawn(function()
         local ok, err = pcall(function()
-            scanLoop(lo, hi, id)
+            scanner(lo, hi, id)
         end)
 
         if not ok and active(id) then
-            info.Text = tostring(err):sub(1, 45)
+            detailLabel.Text =
+                tostring(err):sub(1, 55)
             stop("Scanner error")
         end
     end)
 end)
 
-_G.NexV9Stop = function()
+_G.NexRideStop = function()
     stop("Closed")
     gui:Destroy()
 end
-
-_G.NexRideStop = _G.NexV9Stop
